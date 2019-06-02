@@ -1,4 +1,4 @@
-# coding=utf-8
+# -*- coding: utf-8 -*-
 from core import httptools, filetools, downloadtools
 from platformcode import logger, platformtools
 import json
@@ -71,11 +71,12 @@ def check_addon_init():
                                     text += line
                             except IOError: # nuovo file
                                 localFile = open(addonDir + file["filename"], 'w')
-                            patched = apply_patch(text, file['patch'])
+
+                            patched = apply_patch(text, file['patch'].encode('utf-8'))
                             if patched != text:  # non eseguo se già applicata (es. scaricato zip da github)
                                 localFile.seek(0)
                                 localFile.truncate()
-                                localFile.writelines(patched.encode('utf-8'))
+                                localFile.writelines(patched)
                                 localFile.close()
                                 alreadyApplied = False
                         else:  # è un file NON testuale, lo devo scaricare
