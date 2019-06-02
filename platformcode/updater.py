@@ -27,8 +27,8 @@ def loadCommits(page=1):
 
 
 def check_addon_init():
-    if not addon.getSetting('addon_update_enabled'):
-        return False
+    # if not addon.getSetting('addon_update_enabled'):
+    #     return False
     commits = loadCommits()
 
     localCommitFile = open(addonDir+trackingFile, 'r+')
