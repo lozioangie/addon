@@ -10,7 +10,8 @@ addon = xbmcaddon.Addon('plugin.video.kod')
 
 _hdr_pat = re.compile("^@@ -(\d+),?(\d+)? \+(\d+),?(\d+)? @@.*")
 
-branch = 'stable'
+# branch = 'stable'
+branch = 'updater'
 # user = 'kodiondemand'
 user = 'mac12m99'
 repo = 'addon'
