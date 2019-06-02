@@ -1,314 +1,138 @@
-# -*- coding: utf-8 -*-
-# --------------------------------------------------------------------------------
-# Updater (kodi)
-# --------------------------------------------------------------------------------
-
+# coding=utf-8
+from core import httptools, filetools, downloadtools
+from platformcode import logger, platformtools
 import json
-import os
-import sys
-import threading
-import time
-import urllib
-
 import xbmc
+import re
+import xbmcaddon
 
-from core import ziptools
-from platformcode import config, logger
+addon = xbmcaddon.Addon('plugin.video.kod')
 
-REMOTE_FILE = "https://github.com/kodiondemand/addon/archive/master.zip"
-DESTINATION_FOLDER = xbmc.translatePath("special://home/addons") + "/plugin.video.kod"
-REMOTE_VERSION_FILE = "https://raw.githubusercontent.com/kodiondemand/addon/master/version.json"
+_hdr_pat = re.compile("^@@ -(\d+),?(\d+)? \+(\d+),?(\d+)? @@.*")
+
+branch = 'stable'
+# user = 'kodiondemand'
+user = 'mac12m99'
+repo = 'addon'
+addonDir = xbmc.translatePath("special://home/addons/") + "plugin.video.kod/"
+maxPage = 5  # le api restituiscono 30 commit per volta, quindi se si è rimasti troppo indietro c'è bisogno di andare avanti con le pagine
+trackingFile = "last_commit.txt"
+
+
+def loadCommits(page=1):
+    apiLink = 'https://api.github.com/repos/' + user + '/' + repo + '/commits?sha=' + branch + "&page=" + str(page)
+    commitsLink = httptools.downloadpage(apiLink).data
+    logger.info(apiLink)
+    return json.loads(commitsLink)
+
 
 def check_addon_init():
-    logger.info()
-    
-    # Subtarea de monitor.  Se activa cada X horas para comprobar si hay FIXES al addon
-    # def check_addon_monitor():
-    #     logger.info()
-    #
-    #     # Obtiene el íntervalo entre actualizaciones y si se quieren mensajes
-    #     try:
-    #         timer = int(config.get_setting('addon_update_timer'))       # Intervalo entre actualizaciones, en Ajustes de Alfa
-    #         if timer <= 0:
-    #             return                                                  # 0.  No se quieren actualizaciones
-    #         verbose = config.get_setting('addon_update_message')
-    #     except:
-    #         timer = 12                                                  # Por defecto cada 12 horas
-    #         verbose = False                                             # Por defecto, sin mensajes
-    #     timer = timer * 3600                                            # Lo pasamos a segundos
-    #
-    #     if config.get_platform(True)['num_version'] >= 14:              # Si es Kodi, lanzamos el monitor
-    #         import xbmc
-    #         monitor = xbmc.Monitor()
-    #     else:                                                           # Lanzamos solo una actualización y salimos
-    #         check_addon_updates(verbose)                                # Lanza la actualización
-    #         return
-    #
-    #     while not monitor.abortRequested():                             # Loop infinito hasta cancelar Kodi
-    #
-    #         check_addon_updates(verbose)                                # Lanza la actualización
-    #
-    #         if monitor.waitForAbort(timer):                             # Espera el tiempo programado o hasta que cancele Kodi
-    #             break                                                   # Cancelación de Kodi, salimos
-    #
-    #     return
-    #
-    # # Lanzamos en Servicio de actualización de FIXES
-    # try:
-    #     threading.Thread(target=check_addon_monitor).start()            # Creamos un Thread independiente, hasta el fin de Kodi
-    #     time.sleep(5)                                                   # Dejamos terminar la primera verificación...
-    # except:                                                             # Si hay problemas de threading, se llama una sola vez
-    #     try:
-    #         timer = int(config.get_setting('addon_update_timer'))       # Intervalo entre actualizaciones, en Ajustes de Alfa
-    #         if timer <= 0:
-    #             return                                                  # 0.  No se quieren actualizaciones
-    #         verbose = config.get_setting('addon_update_message')
-    #     except:
-    #         verbose = False                                             # Por defecto, sin mensajes
-    #         pass
-    #     check_addon_updates(verbose)                                    # Lanza la actualización, en Ajustes de Alfa
-    #     time.sleep(5)                                                   # Dejamos terminar la primera verificación...
-              
-    return
-
-def checkforupdates(plugin_mode=True):
-    logger.info("kodiondemand.core.updater checkforupdates")
-
-    response = urllib.urlopen(REMOTE_VERSION_FILE)
-    data = json.loads(response.read())
-
-    '''    
-    {
-	"update": {
-		"name": "Kodi on Demand",
-		"tag": "1.0.0",
-		"version": "1000",
-		"date": "03/05/2019",
-		"changes": "Added Updater"
-	    }
-    }   
-    '''
-    # remote is addon version without dots
-    remote_version = data["update"]["version"]
-    # tag version is version with dots used to a betterview gui
-    tag_version = data["update"]["tag"]
-    logger.info("kodiondemand.core.updater version remota="+tag_version+" "+remote_version)
-    
-    '''
-    # Lee el fichero con la versión instalada
-    localFileName = LOCAL_VERSION_FILE
-    logger.info("kodiondemand.core.updater fichero local version: "+localFileName)
-    infile = open( localFileName )
-    data = infile.read()
-    infile.close()
-    #logger.info("xml local="+data)
-    '''
-    path_local = xbmc.translatePath("special://home/addons/") + "plugin.video.kod/version.json"
-    data = json.loads(open(path_local).read())
-
-    version_local = data["update"]["version"]
-    tag_local = data["update"]["tag"]
-    logger.info("kodiondemand.core.updater version local="+tag_local+" "+version_local)
-
-    try:
-        numero_remote_version = int(remote_version)
-        numero_version_local = int(version_local)
-    except:
-        import traceback
-        logger.info(traceback.format_exc())
-        remote_version = ""
-        version_local = ""
-
-    if remote_version=="" or version_local=="":
-        arraydescargada = tag_version.split(".")
-        arraylocal = tag_local.split(".")
-
-        # local 2.8.0 - descargada 2.8.0 -> no descargar
-        # local 2.9.0 - descargada 2.8.0 -> no descargar
-        # local 2.8.0 - descargada 2.9.0 -> descargar
-        if len(arraylocal) == len(arraydescargada):
-            logger.info("caso 1")
-            hayqueactualizar = False
-            for i in range(0, len(arraylocal)):
-                print arraylocal[i], arraydescargada[i], int(arraydescargada[i]) > int(arraylocal[i])
-                if int(arraydescargada[i]) > int(arraylocal[i]):
-                    hayqueactualizar = True
-        # local 2.8.0 - descargada 2.8 -> no descargar
-        # local 2.9.0 - descargada 2.8 -> no descargar
-        # local 2.8.0 - descargada 2.9 -> descargar
-        if len(arraylocal) > len(arraydescargada):
-            logger.info("caso 2")
-            hayqueactualizar = False
-            for i in range(0, len(arraydescargada)):
-                #print arraylocal[i], arraydescargada[i], int(arraydescargada[i]) > int(arraylocal[i])
-                if int(arraydescargada[i]) > int(arraylocal[i]):
-                    hayqueactualizar = True
-        # local 2.8 - descargada 2.8.8 -> descargar
-        # local 2.9 - descargada 2.8.8 -> no descargar
-        # local 2.10 - descargada 2.9.9 -> no descargar
-        # local 2.5 - descargada 3.0.0
-        if len(arraylocal) < len(arraydescargada):
-            logger.info("caso 3")
-            hayqueactualizar = True
-            for i in range(0, len(arraylocal)):
-                #print arraylocal[i], arraydescargada[i], int(arraylocal[i])>int(arraydescargada[i])
-                if int(arraylocal[i]) > int(arraydescargada[i]):
-                    hayqueactualizar =  False
-                elif int(arraylocal[i]) < int(arraydescargada[i]):
-                    hayqueactualizar =  True
-                    break
-    else:
-        hayqueactualizar = (numero_remote_version > numero_version_local)
-
-    if hayqueactualizar:
-    
-        if plugin_mode:
-    
-            logger.info("kodiondemand.core.updater actualizacion disponible")
-            
-            # Añade al listado de XBMC
-            import xbmcgui
-            #thumbnail = IMAGES_PATH+"Crystal_Clear_action_info.png"
-            thumbnail = os.path.join(config.get_runtime_path() , "resources" , "images", "service_update.png")
-            logger.info("thumbnail="+thumbnail)
-            listitem = xbmcgui.ListItem( "Scarica la versione "+tag_version, thumbnailImage=thumbnail )
-            itemurl = '%s?action=update&version=%s' % ( sys.argv[ 0 ] , tag_version )
-            import xbmcplugin
-            xbmcplugin.addDirectoryItem( handle = int(sys.argv[ 1 ]), url = itemurl , listitem=listitem, isFolder=True)
-            
-            # Avisa con un popup
-            dialog = xbmcgui.Dialog()
-            dialog.ok("Versione "+tag_version+" disponibile","E' possibile scaricare la nuova versione del plugin\nattraverso l'opzione nel menù principale.")
-
-        else:
-
-            import xbmcgui
-            yes_pressed = xbmcgui.Dialog().yesno( "Versione "+tag_version+" disponibile" , "Installarla?" )
-
-            if yes_pressed:
-                params = {"version":tag_version}
-                update(params)
-
-
-def update():
-    # Descarga el ZIP
-    logger.info("kodiondemand.core.updater update")
-    remotefilename = REMOTE_FILE
-    localfilename = xbmc.translatePath("special://home/addons/") + "plugin.video.kod.update.zip"
-    logger.info("kodiondemand.core.updater remotefilename=%s" % remotefilename)
-    logger.info("kodiondemand.core.updater localfilename=%s" % localfilename)
-    logger.info("kodiondemand.core.updater descarga fichero...")
-    
-    urllib.urlretrieve(remotefilename,localfilename)
-    #from core import downloadtools
-    #downloadtools.downloadfile(remotefilename, localfilename, continuar=False)
-    
-    # Lo descomprime
-    logger.info("kodiondemand.core.updater descomprime fichero...")
-    unzipper = ziptools.ziptools()
-    destpathname = xbmc.translatePath("special://home/addons/") 
-    logger.info("kodiondemand.core.updater destpathname=%s" % destpathname)
-    unzipper.extract(localfilename,destpathname, os.path.join(xbmc.translatePath("special://home/addons/"), "plugin.video.kod/"))
-
-    temp_dir = os.path.join(destpathname,"addon-master")
-    files = os.listdir(temp_dir)
-    #for f in files:
-    #    shutil.move(os.path.join(temp_dir, f), os.path.join(xbmc.translatePath("special://home/addons/"), "plugin.video.kod/", f))
-            
-    # Borra el zip descargado
-    logger.info("kodiondemand.core.updater borra fichero...")
-    os.remove(localfilename)
-    #os.remove(temp_dir)
-    logger.info("kodiondemand.core.updater ...fichero borrado")
-
-    
-'''
-def check_addon_updates(verbose=False):
-    logger.info()
-
-    ADDON_UPDATES_JSON = 'https://extra.alfa-addon.com/addon_updates/updates.json'
-    ADDON_UPDATES_ZIP = 'https://extra.alfa-addon.com/addon_updates/updates.zip'
-
-    try:
-        last_fix_json = os.path.join(config.get_runtime_path(), 'last_fix.json')   # información de la versión fixeada del usuario
-        # Se guarda en get_runtime_path en lugar de get_data_path para que se elimine al cambiar de versión
-
-        # Descargar json con las posibles actualizaciones
-        # -----------------------------------------------
-        data = httptools.downloadpage(ADDON_UPDATES_JSON, timeout=2).data
-        if data == '': 
-            logger.info('No se encuentran actualizaciones del addon')
-            if verbose:
-                platformtools.dialog_notification(config.get_localized_string(70667), config.get_localized_string(70668))
-            return False
-
-        data = jsontools.load(data)
-        if 'addon_version' not in data or 'fix_version' not in data: 
-            logger.info('No hay actualizaciones del addon')
-            if verbose:
-                platformtools.dialog_notification(config.get_localized_string(70667), config.get_localized_string(70668))
-            return False
-
-        # Comprobar versión que tiene instalada el usuario con versión de la actualización
-        # --------------------------------------------------------------------------------
-        current_version = config.get_addon_version(with_fix=False)
-        if current_version != data['addon_version']:
-            logger.info('No hay actualizaciones para la versión %s del addon' % current_version)
-            if verbose:
-                platformtools.dialog_notification(config.get_localized_string(70667), config.get_localized_string(70668))
-            return False
-
-        if os.path.exists(last_fix_json):
-            try:
-                lastfix =  {} 
-                lastfix = jsontools.load(filetools.read(last_fix_json))
-                if lastfix['addon_version'] == data['addon_version'] and lastfix['fix_version'] == data['fix_version']:
-                    logger.info(config.get_localized_string(70670) % (data['addon_version'], data['fix_version']))
-                    if verbose:
-                        platformtools.dialog_notification(config.get_localized_string(70667), config.get_localized_string(70671) % (data['addon_version'], data['fix_version']))
-                    return False
-            except:
-                if lastfix:
-                    logger.error('last_fix.json: ERROR en: ' + str(lastfix))
-                else:
-                    logger.error('last_fix.json: ERROR desconocido')
-                lastfix =  {}
-
-        # Descargar zip con las actualizaciones
-        # -------------------------------------
-        localfilename = os.path.join(config.get_data_path(), 'temp_updates.zip')
-        if os.path.exists(localfilename): os.remove(localfilename)
-
-        downloadtools.downloadfile(ADDON_UPDATES_ZIP, localfilename, silent=True)
-        
-        # Descomprimir zip dentro del addon
-        # ---------------------------------
-        try:
-            unzipper = ziptools.ziptools()
-            unzipper.extract(localfilename, config.get_runtime_path())
-        except:
-            import xbmc
-            xbmc.executebuiltin('XBMC.Extract("%s", "%s")' % (localfilename, config.get_runtime_path()))
-            time.sleep(1)
-        
-        # Borrar el zip descargado
-        # ------------------------
-        os.remove(localfilename)
-        
-        # Guardar información de la versión fixeada
-        # -----------------------------------------
-        if 'files' in data: data.pop('files', None)
-        filetools.write(last_fix_json, jsontools.dump(data))
-        
-        logger.info(config.get_localized_string(70672) % (data['addon_version'], data['fix_version']))
-        if verbose:
-            platformtools.dialog_notification(config.get_localized_string(70673), config.get_localized_string(70671) % (data['addon_version'], data['fix_version']))
-        return True
-
-    except:
-        logger.error('Error al comprobar actualizaciones del addon!')
-        logger.error(traceback.format_exc())
-        if verbose:
-            platformtools.dialog_notification(config.get_localized_string(70674), config.get_localized_string(70675))
+    if not addon.getSetting('addon_update_enabled'):
         return False
-'''
+    commits = loadCommits()
+
+    localCommitFile = open(addonDir+trackingFile, 'r+')
+    localCommitSha = localCommitFile.read()
+
+    updated = False
+
+    pos = None
+    page = 1
+    while commits and page <= maxPage:
+        for n, c in enumerate(commits):
+            if c['sha'] == localCommitSha:
+                pos = n
+                break
+        else:
+            page += 1
+            commits = loadCommits(page)
+
+        break
+    else:
+        logger.info('Impossibile trovare il commit attuale')
+
+    if pos > 0:
+        for c in reversed(commits[:pos]):
+            commit = httptools.downloadpage(c['url']).data
+            commitJson = json.loads(commit)
+            alreadyApplied = True
+
+            for file in commitJson['files']:
+                if file["filename"] == trackingFile:  # il file di tracking non si modifica
+                    continue
+                else:
+                    if file['status'] == 'modified' or file['status'] == 'added':
+                        if 'patch' in file:
+                            text = ""
+                            try:
+                                localFile = open(addonDir+file["filename"], 'r+')
+                                for line in localFile:
+                                    text += line
+                            except IOError: # nuovo file
+                                localFile = open(addonDir + file["filename"], 'w')
+                            patched = apply_patch(text, file['patch'])
+                            if patched != text:  # non eseguo se già applicata (es. scaricato zip da github)
+                                localFile.seek(0)
+                                localFile.truncate()
+                                localFile.writelines(patched.encode('utf-8'))
+                                localFile.close()
+                                alreadyApplied = False
+                        else:  # è un file NON testuale, lo devo scaricare
+                            downloadtools.downloadfile(file['raw_url'], addonDir + file['filename'], silent=True)
+                            alreadyApplied = False
+                    elif file['status'] == 'removed':
+                        try:
+                            filetools.remove(addonDir+file["filename"])
+                            alreadyApplied = False
+                        except:
+                            pass
+                    elif file['status'] == 'renamed':
+                        dirs = file['filename'].split('/')
+                        for d in dirs[:-1]:
+                            if not filetools.isdir(addonDir + d):
+                                filetools.mkdir(addonDir + d)
+                        filetools.move(addonDir + file['previous_filename'], addonDir + file['filename'])
+                        alreadyApplied = False
+
+            if not alreadyApplied:  # non mando notifica se già applicata (es. scaricato zip da github)
+                platformtools.dialog_notification('Kodi on Demand', commitJson['commit']['message'])
+
+        localCommitFile.seek(0)
+        localCommitFile.truncate()
+        localCommitFile.writelines(c['sha'])
+        localCommitFile.close()
+
+    else:
+        logger.info('Nessun nuovo aggiornamento')
+
+    return updated
+
+
+# https://gist.github.com/noporpoise/16e731849eb1231e86d78f9dfeca3abc  Grazie!
+
+def apply_patch(s,patch,revert=False):
+  """
+  Apply unified diff patch to string s to recover newer string.
+  If revert is True, treat s as the newer string, recover older string.
+  """
+  s = s.splitlines(True)
+  p = patch.splitlines(True)
+  t = ''
+  i = sl = 0
+  (midx,sign) = (1,'+') if not revert else (3,'-')
+  while i < len(p) and p[i].startswith(("---","+++")): i += 1 # skip header lines
+  while i < len(p):
+    m = _hdr_pat.match(p[i])
+    if not m: raise Exception("Cannot process diff")
+    i += 1
+    l = int(m.group(midx))-1 + (m.group(midx+1) == '0')
+    t += ''.join(s[sl:l])
+    sl = l
+    while i < len(p) and p[i][0] != '@':
+      if i+1 < len(p) and p[i+1][0] == '\\': line = p[i][:-1]; i += 2
+      else: line = p[i]; i += 1
+      if len(line) > 0:
+        if line[0] == sign or line[0] == ' ': t += line[1:]
+        sl += (line[0] != sign)
+  t += ''.join(s[sl:])
+  return t
