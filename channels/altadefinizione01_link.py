@@ -4,7 +4,7 @@
 # -*- e adattato for KOD -*-
 # -*- By Greko -*-
 # -*- last change: 26/05/2019
-
+# -*_ test updater
 import channelselector
 from specials import autoplay
 from core import servertools, support, jsontools
