@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # by DrZ3r0
-
+# modificato per kod updater
 import urllib
 
 from core import httptools

@@ -36,7 +36,8 @@ def check_addon_init():
 
     localCommitFile = open(addonDir+trackingFile, 'r+')
     localCommitSha = localCommitFile.read()
-
+    #localCommitSha = localCommitSha[:-1]
+    localCommitSha = localCommitSha.replace('\n','') # da testare
     updated = False
 
     pos = None
