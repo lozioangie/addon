@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import hashlib
+
 from core import httptools, filetools, downloadtools
 from platformcode import logger, platformtools
 import json
@@ -66,22 +68,29 @@ def check_addon_init():
                         if 'patch' in file:
                             text = ""
                             try:
-                                localFile = open(addonDir+file["filename"], 'r+')
+                                localFile = open(addonDir + file["filename"], 'r+')
                                 for line in localFile:
                                     text += line
                             except IOError: # nuovo file
                                 localFile = open(addonDir + file["filename"], 'w')
 
-                            patched = apply_patch(text, file['patch'].encode('utf-8'))
+                            patched = apply_patch(text, (file['patch']+'\n').encode('utf-8'))
                             if patched != text:  # non eseguo se già applicata (es. scaricato zip da github)
-                                localFile.seek(0)
-                                localFile.truncate()
-                                localFile.writelines(patched)
-                                localFile.close()
-                                alreadyApplied = False
+                                if getSha(patched) == file['sha']:
+                                    localFile.seek(0)
+                                    localFile.truncate()
+                                    localFile.writelines(patched)
+                                    localFile.close()
+                                    alreadyApplied = False
+                                else:  # nel caso ci siano stati problemi
+                                    downloadtools.downloadfile(file['raw_url'], addonDir + file['filename'],
+                                                               silent=True)
                         else:  # è un file NON testuale, lo devo scaricare
-                            downloadtools.downloadfile(file['raw_url'], addonDir + file['filename'], silent=True)
-                            alreadyApplied = False
+                            # se non è già applicato
+                            if not (filetools.isfile(addonDir + file['filename']) and getSha(
+                                    filetools.read(addonDir + file['filename']) == file['sha'])):
+                                downloadtools.downloadfile(file['raw_url'], addonDir + file['filename'], silent=True)
+                                alreadyApplied = False
                     elif file['status'] == 'removed':
                         try:
                             filetools.remove(addonDir+file["filename"])
@@ -89,12 +98,15 @@ def check_addon_init():
                         except:
                             pass
                     elif file['status'] == 'renamed':
-                        dirs = file['filename'].split('/')
-                        for d in dirs[:-1]:
-                            if not filetools.isdir(addonDir + d):
-                                filetools.mkdir(addonDir + d)
-                        filetools.move(addonDir + file['previous_filename'], addonDir + file['filename'])
-                        alreadyApplied = False
+                        # se non è già applicato
+                        if not (filetools.isfile(addonDir + file['filename']) and getSha(
+                                filetools.read(addonDir + file['filename']) == file['sha'])):
+                            dirs = file['filename'].split('/')
+                            for d in dirs[:-1]:
+                                if not filetools.isdir(addonDir + d):
+                                    filetools.mkdir(addonDir + d)
+                            filetools.move(addonDir + file['previous_filename'], addonDir + file['filename'])
+                            alreadyApplied = False
 
             if not alreadyApplied:  # non mando notifica se già applicata (es. scaricato zip da github)
                 platformtools.dialog_notification('Kodi on Demand', commitJson['commit']['message'])
@@ -138,3 +150,7 @@ def apply_patch(s,patch,revert=False):
         sl += (line[0] != sign)
   t += ''.join(s[sl:])
   return t
+
+
+def getSha(fileText):
+    return hashlib.sha1("blob " + str(len(fileText)) + "\0" + fileText).hexdigest()
