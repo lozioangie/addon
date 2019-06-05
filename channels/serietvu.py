@@ -23,6 +23,7 @@ list_quality = ['default']
 def mainlist(item):
     log()
     itemlist = []
+    support.menu(itemlist, 'SERIETVU bold',)
     support.menu(itemlist, 'Novità bold', 'latestep', "%s/ultimi-episodi" % host, 'tvshow')
     support.menu(itemlist, 'Serie TV bold', 'lista_serie', "%s/category/serie-tv" % host, 'tvshow')
     support.menu(itemlist, 'Categorie', 'categorie', host, 'tvshow')
