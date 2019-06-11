@@ -129,7 +129,7 @@ def calcCurrHash():
     page = 1
     while commits and page <= maxPage:
         for n, c in enumerate(commits):
-            if c['tree']['sha'] == treeHash:
+             if c['commit']['tree']['sha'] == treeHash:
                 localCommitFile = open(addonDir + trackingFile, 'w')
                 localCommitFile.write(c['sha'])
                 localCommitFile.close()
