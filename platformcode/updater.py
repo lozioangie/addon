@@ -36,7 +36,6 @@ def check_addon_init():
 
     localCommitFile = open(addonDir+trackingFile, 'r+')
     localCommitSha = localCommitFile.read()
-    #localCommitSha = localCommitSha[:-1]
     localCommitSha = localCommitSha.replace('\n','') # da testare
     updated = False
 
@@ -121,6 +120,25 @@ def check_addon_init():
         logger.info('Nessun nuovo aggiornamento')
 
     return updated
+
+
+def calcCurrHash():
+    from lib import githash
+    treeHash = githash.tree_hash(addonDir).hexdigest()
+    commits = loadCommits()
+    page = 1
+    while commits and page <= maxPage:
+        for n, c in enumerate(commits):
+            if c['tree']['sha'] == treeHash:
+                localCommitFile = open(addonDir + trackingFile, 'w')
+                localCommitFile.write(c['sha'])
+                localCommitFile.close()
+                break
+        else:
+            page += 1
+            commits = loadCommits(page)
+
+        break
 
 
 # https://gist.github.com/noporpoise/16e731849eb1231e86d78f9dfeca3abc  Grazie!
