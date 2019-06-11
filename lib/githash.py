@@ -114,7 +114,7 @@ def tree_hash(path):
     # two passes, one to find the size and one to compute the hash.
     contents = os.listdir(path)
     tsize = 0
-    to_skip = ('.', '..', '.git')
+    to_skip = ('.', '..', '.git', '.pyo')
     pass1 = []
     for entry in contents:
         if entry not in to_skip:
